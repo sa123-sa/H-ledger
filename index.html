@@ -12,51 +12,39 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
-        /* WEB SCREEN STYLING */
         :root {
             --primary: #2c3e50;
             --success: #27ae60;
             --danger: #e74e40;
             --bg-light: #f8f9fa;
         }
-
         body { font-family: Arial, sans-serif; font-size: 16px; margin: 0; padding: 20px; background: #ecf0f1; }
-        
         .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 15px;}
         h1, h2, h3, .headline { font-size: 24px; font-weight: bold; margin: 0; color: var(--primary); }
-        
         .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-width: 1400px; margin: auto; }
-        
         .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; justify-content: space-between;}
         .tabs { display: flex; gap: 10px; }
         .tab-btn { font-size: 16px; padding: 8px 16px; cursor: pointer; border: 1px solid #ccc; background: #eee; border-radius: 4px; }
         .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-        
         input[type="text"], input[type="number"], input[type="password"] { font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         .search-box { width: 400px; padding: 10px; font-size: 18px; border: 2px solid var(--primary); }
-        
         button { font-size: 16px; padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; color: white; font-weight: bold; }
         .btn-green { background: var(--success); }
         .btn-blue { background: #3498db; }
         .btn-red { background: var(--danger); }
         .btn-login { background: #f39c12; font-size: 14px;}
         .btn-logout { background: #7f8c8d; font-size: 14px;}
-
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { font-size: 16px; border: 1px solid #bdc3c7; padding: 10px; text-align: left; }
         th { font-size: 18px; background-color: #dcdde1; color: #333; }
-        
         .admin-only { display: none; }
         .photo-btn { font-size: 14px; padding: 4px 8px; background: #7f8c8d; color: white; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 5px;}
         .img-preview { max-width: 100px; max-height: 50px; display: block; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer;}
-
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 1000; }
         .modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; max-width: 90%; }
         .checkbox-group { display: flex; flex-direction: column; gap: 10px; margin: 15px 0; font-size: 16px; }
-
         #syncStatus { font-size: 14px; padding: 5px 10px; border-radius: 20px; background: #95a5a6; color: white; font-weight: bold; }
 
-        /* PRINT STYLES - STRICTLY 18pt HEADLINES / 14pt TEXT */
         @media print {
             @page { size: A4 portrait; margin: 15mm; }
             body { font-size: 14pt !important; background: white; padding: 0; margin: 0; }
@@ -157,6 +145,13 @@
         <img id="lightboxImg" src="" style="max-width: 90%; max-height: 90%; border: 5px solid white;">
     </div>
 
+    <script>
+        window.appDB = JSON.parse(localStorage.getItem('hoque_offline_db')) || {
+            currentTab: 'Retail',
+            records: []
+        };
+    </script>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -174,10 +169,13 @@
         const dbCloud = getFirestore(app);
         const recordsRef = collection(dbCloud, "hoque_ledger_records");
 
+        // Listen for live updates from cloud
         onSnapshot(recordsRef, (snapshot) => {
+            if (snapshot.empty) return;
             let liveRecords = [];
             snapshot.forEach((doc) => { liveRecords.push(doc.data()); });
 
+            // Preserve local photos
             liveRecords.forEach(cRec => {
                 const existing = window.appDB.records.find(r => r.id === cRec.id);
                 if (existing && existing.photo) cRec.photo = existing.photo;
@@ -194,8 +192,12 @@
                 syncStatus.style.background = "#27ae60";
             }
         }, (error) => {
-            document.getElementById('syncStatus').innerText = "⚠️ Offline Mode";
-            document.getElementById('syncStatus').style.background = "#e74e40";
+            console.log("Firebase sync warning: running on local storage fallback.");
+            const syncStatus = document.getElementById('syncStatus');
+            if (syncStatus) {
+                syncStatus.innerText = "⚠️ Offline Mode";
+                syncStatus.style.background = "#e74e40";
+            }
         });
 
         window.cloudSaveRecord = async function(record) {
@@ -203,14 +205,13 @@
                 const cleanRecord = { ...record, photo: null }; 
                 await setDoc(doc(recordsRef, record.id), cleanRecord);
             } catch (e) {
-                console.log("Offline: Record queued for background upload.");
+                console.log("Offline: Record saved locally only.");
             }
         };
     </script>
 
     <script>
-        const ADMIN_PIN = "1234"; // CHANGE THIS PIN to your secret code
-        
+        const ADMIN_PIN = "1234"; // Change PIN if needed
         window.isAdmin = localStorage.getItem('hoque_admin_session') === 'true';
 
         function checkAuth() {
@@ -252,11 +253,6 @@
             window.isAdmin = false;
             checkAuth();
         }
-
-        window.appDB = JSON.parse(localStorage.getItem('hoque_offline_db')) || {
-            currentTab: 'Retail',
-            records: []
-        };
 
         function saveLocal() {
             localStorage.setItem('hoque_offline_db', JSON.stringify(window.appDB));
@@ -301,11 +297,22 @@
             ['addName', 'addCO', 'addVillage', 'addPage', 'addDue'].forEach(id => document.getElementById(id).value = '');
         }
 
-        function updateField(id, field, value) {
+        function updateField(id, field, element) {
             if (!window.isAdmin) return;
             const rec = window.appDB.records.find(r => r.id === id);
             if (rec) {
-                rec[field] = field === 'due' || field === 'paid' ? (parseFloat(value) || 0) : value.trim();
+                const val = element.innerText.trim();
+                rec[field] = (field === 'due' || field === 'paid') ? (parseFloat(val) || 0) : val;
+                
+                // Immediately recalculate remaining due in the UI row without losing focus
+                if(field === 'due' || field === 'paid') {
+                    const row = element.closest('tr');
+                    const remainingCell = row.querySelector('.remaining-cell');
+                    if(remainingCell) {
+                        remainingCell.innerText = (rec.due - rec.paid).toFixed(2);
+                    }
+                }
+
                 saveLocal();
                 if (window.cloudSaveRecord) window.cloudSaveRecord(rec);
             }
@@ -353,13 +360,13 @@
 
                 tr.innerHTML = `
                     <td data-col="0">${r.sl}</td>
-                    <td data-col="1" ${editableAttr} onblur="updateField('${r.id}', 'name', this.innerText)">${r.name}</td>
-                    <td data-col="2" ${editableAttr} onblur="updateField('${r.id}', 'co', this.innerText)">${r.co}</td>
-                    <td data-col="3" ${editableAttr} onblur="updateField('${r.id}', 'village', this.innerText)">${r.village}</td>
-                    <td data-col="4" ${editableAttr} onblur="updateField('${r.id}', 'page', this.innerText)">${r.page}</td>
-                    <td data-col="5" ${editableAttr} onblur="updateField('${r.id}', 'due', this.innerText)" style="font-weight:bold;">${r.due}</td>
-                    <td data-col="6" ${editableAttr} onblur="updateField('${r.id}', 'paid', this.innerText)" style="font-weight:bold;">${r.paid}</td>
-                    <td data-col="7" style="font-weight:bold; color:#d35400;">${remaining.toFixed(2)}</td>
+                    <td data-col="1" ${editableAttr} onblur="updateField('${r.id}', 'name', this)">${r.name}</td>
+                    <td data-col="2" ${editableAttr} onblur="updateField('${r.id}', 'co', this)">${r.co}</td>
+                    <td data-col="3" ${editableAttr} onblur="updateField('${r.id}', 'village', this)">${r.village}</td>
+                    <td data-col="4" ${editableAttr} onblur="updateField('${r.id}', 'page', this)">${r.page}</td>
+                    <td data-col="5" ${editableAttr} onblur="updateField('${r.id}', 'due', this)" style="font-weight:bold;">${r.due}</td>
+                    <td data-col="6" ${editableAttr} onblur="updateField('${r.id}', 'paid', this)" style="font-weight:bold;">${r.paid}</td>
+                    <td data-col="7" class="remaining-cell" style="font-weight:bold; color:#d35400;">${remaining.toFixed(2)}</td>
                     ${adminActionHtml}
                 `;
                 tbody.appendChild(tr);
@@ -387,31 +394,4 @@
         }
 
         function exportExcel() {
-            const viewData = window.appDB.records.filter(r => r.tab === window.appDB.currentTab).sort((a, b) => a.sl - b.sl);
-            let matrix = [['SL NO', 'NAME', 'C/O', 'VILLAGE', 'PAGE NO', 'DUE AMOUNT', 'PAID AMOUNT', 'REMAINING DUE']];
-            
-            viewData.forEach(r => {
-                matrix.push([r.sl, r.name, r.co, r.village, r.page, r.due, r.paid, (r.due - r.paid)]);
-            });
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matrix), window.appDB.currentTab);
-            XLSX.writeFile(wb, `Hoque_Register_${window.appDB.currentTab}_${new Date().toISOString().slice(0,10)}.xlsx`);
-        }
-
-        checkAuth();
-    </script>
-
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').then(registration => {
-                    console.log('ServiceWorker registration successful');
-                }).catch(err => {
-                    console.log('ServiceWorker registration failed: ', err);
-                });
-            });
-        }
-    </script>
-</body>
-</html>
+       
