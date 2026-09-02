@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hoque Fertilizer Register Book</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <link rel="icon" href="icon.png">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        /* WEB SCREEN STYLING */
+        :root {
+            --primary: #2c3e50;
+            --success: #27ae60;
+            --danger: #e74e40;
+            --bg-light: #f8f9fa;
+        }
+
+        body { font-family: Arial, sans-serif; font-size: 16px; margin: 0; padding: 20px; background: #ecf0f1; }
+        
+        .header-container { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 15px;}
+        h1, h2, h3, .headline { font-size: 24px; font-weight: bold; margin: 0; color: var(--primary); }
+        
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-width: 1400px; margin: auto; }
+        
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; justify-content: space-between;}
+        .tabs { display: flex; gap: 10px; }
+        .tab-btn { font-size: 16px; padding: 8px 16px; cursor: pointer; border: 1px solid #ccc; background: #eee; border-radius: 4px; }
+        .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        
+        input[type="text"], input[type="number"], input[type="password"] { font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .search-box { width: 400px; padding: 10px; font-size: 18px; border: 2px solid var(--primary); }
+        
+        button { font-size: 16px; padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; color: white; font-weight: bold; }
+        .btn-green { background: var(--success); }
+        .btn-blue { background: #3498db; }
+        .btn-red { background: var(--danger); }
+        .btn-login { background: #f39c12; font-size: 14px;}
+        .btn-logout { background: #7f8c8d; font-size: 14px;}
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { font-size: 16px; border: 1px solid #bdc3c7; padding: 10px; text-align: left; }
+        th { font-size: 18px; background-color: #dcdde1; color: #333; }
+        
+        .admin-only { display: none; }
+        .photo-btn { font-size: 14px; padding: 4px 8px; background: #7f8c8d; color: white; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 5px;}
+        .img-preview { max-width: 100px; max-height: 50px; display: block; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc; cursor: pointer;}
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 8px; width: 400px; max-width: 90%; }
+        .checkbox-group { display: flex; flex-direction: column; gap: 10px; margin: 15px 0; font-size: 16px; }
+
+        #syncStatus { font-size: 14px; padding: 5px 10px; border-radius: 20px; background: #95a5a6; color: white; font-weight: bold; }
+
+        /* PRINT STYLES - STRICTLY 18pt HEADLINES / 14pt TEXT */
+        @media print {
+            @page { size: A4 portrait; margin: 15mm; }
+            body { font-size: 14pt !important; background: white; padding: 0; margin: 0; }
+            .no-print { display: none !important; }
+            .container { box-shadow: none; padding: 0; width: 100%; max-width: 100%; border: none; }
+            h1, h2, h3, .headline { font-size: 18pt !important; }
+            th { font-size: 18pt !important; background-color: #eee !important; -webkit-print-color-adjust: exact; }
+            td { font-size: 14pt !important; }
+            table { border: 2px solid #000; }
+            .hide-col { display: none !important; }
+            td[contenteditable="true"] { -webkit-user-modify: read-only; border: 1px solid #bdc3c7; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header-container no-print">
+            <h1 class="headline">HOQUE FERTILIZER RETAILER REGISTER BOOK</h1>
+            <div id="authSection">
+                <button id="loginBtn" class="btn-login" onclick="openLoginModal()">Admin Login</button>
+                <button id="logoutBtn" class="btn-logout" style="display:none;" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="controls no-print">
+            <div class="tabs" id="tabContainer">
+                <button class="tab-btn active" onclick="switchTab('Retail')">Retail</button>
+                <button class="tab-btn" onclick="switchTab('Wholesale')">Wholesale</button>
+            </div>
+            <span id="syncStatus">☁️ Connecting...</span>
+        </div>
+
+        <div class="controls no-print" style="justify-content: center;">
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search Name, C/O, Village, or Page..." onkeyup="renderTable()">
+        </div>
+
+        <div class="controls admin-only no-print" id="dataEntryRow" style="background: var(--bg-light); padding: 15px; border: 1px solid #ddd; border-radius: 4px;">
+            <input type="text" id="addName" placeholder="NAME">
+            <input type="text" id="addCO" placeholder="C/O">
+            <input type="text" id="addVillage" placeholder="VILLAGE">
+            <input type="text" id="addPage" placeholder="PAGE NO" style="width: 100px;">
+            <input type="number" id="addDue" placeholder="DUE AMOUNT" style="width: 140px;">
+            <button class="btn-green" onclick="addRecord()">+ Add Record</button>
+        </div>
+
+        <div class="controls admin-only no-print" id="exportRow" style="justify-content: flex-end;">
+            <button class="btn-blue" onclick="openExportModal()">🖨️ Print / Export PDF</button>
+            <button class="btn-blue" style="background: #27ae60;" onclick="exportExcel()">📊 Export Excel</button>
+        </div>
+
+        <table id="ledgerTable">
+            <thead>
+                <tr>
+                    <th data-col="0">SL NO</th>
+                    <th data-col="1">NAME</th>
+                    <th data-col="2">C/O</th>
+                    <th data-col="3">VILLAGE</th>
+                    <th data-col="4">PAGE NO</th>
+                    <th data-col="5" style="color:#e74e40;">DUE AMOUNT</th>
+                    <th data-col="6" style="color:#27ae60;">PAID AMOUNT</th>
+                    <th data-col="7" style="color:#d35400;">REMAINING DUE</th>
+                    <th class="no-print admin-col" style="display:none;">ACTION</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+    <div id="loginModal" class="modal no-print">
+        <div class="modal-content" style="width: 300px; text-align: center;">
+            <h2 class="headline">Admin Login</h2>
+            <input type="password" id="adminPassword" placeholder="Enter PIN/Password" style="width: 90%; margin: 15px 0;">
+            <button class="btn-blue" style="width: 100%; margin-bottom: 10px;" onclick="verifyLogin()">Login</button>
+            <button class="btn-red" style="width: 100%; background: #ccc; color: #333;" onclick="document.getElementById('loginModal').style.display='none'">Cancel</button>
+        </div>
+    </div>
+
+    <div id="exportModal" class="modal no-print">
+        <div class="modal-content">
+            <h2 class="headline">Select Columns to Print</h2>
+            <div class="checkbox-group" id="columnSelectors">
+                <label><input type="checkbox" value="0" checked> SL NO</label>
+                <label><input type="checkbox" value="1" checked> NAME</label>
+                <label><input type="checkbox" value="2" checked> C/O</label>
+                <label><input type="checkbox" value="3" checked> VILLAGE</label>
+                <label><input type="checkbox" value="4" checked> PAGE NO</label>
+                <label><input type="checkbox" value="5" checked> DUE AMOUNT</label>
+                <label><input type="checkbox" value="6" checked> PAID AMOUNT</label>
+                <label><input type="checkbox" value="7" checked> REMAINING DUE</label>
+            </div>
+            <button class="btn-blue" style="width: 100%; margin-bottom: 10px;" onclick="executePrint()">Print A4 PDF</button>
+            <button class="btn-red" style="width: 100%; background: #ccc; color: #333;" onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+
+    <div id="lightbox" class="modal no-print" onclick="this.style.display='none'">
+        <img id="lightboxImg" src="" style="max-width: 90%; max-height: 90%; border: 5px solid white;">
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA-wWjK9aZ_BmcFDmUjwuV_qptgXXSyShs",
+            authDomain: "hoque-fertilizer.firebaseapp.com",
+            projectId: "hoque-fertilizer",
+            storageBucket: "hoque-fertilizer.firebasestorage.app",
+            messagingSenderId: "880764105806",
+            appId: "1:880764105806:web:321ef761f00ee4a4d83f1f"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const dbCloud = getFirestore(app);
+        const recordsRef = collection(dbCloud, "hoque_ledger_records");
+
+        onSnapshot(recordsRef, (snapshot) => {
+            let liveRecords = [];
+            snapshot.forEach((doc) => { liveRecords.push(doc.data()); });
+
+            liveRecords.forEach(cRec => {
+                const existing = window.appDB.records.find(r => r.id === cRec.id);
+                if (existing && existing.photo) cRec.photo = existing.photo;
+            });
+
+            window.appDB.records = liveRecords;
+            localStorage.setItem('hoque_offline_db', JSON.stringify(window.appDB));
+
+            if (typeof window.renderTable === 'function') window.renderTable();
+            
+            const syncStatus = document.getElementById('syncStatus');
+            if (syncStatus) {
+                syncStatus.innerText = "✅ Live Auto-Refresh Active";
+                syncStatus.style.background = "#27ae60";
+            }
+        }, (error) => {
+            document.getElementById('syncStatus').innerText = "⚠️ Offline Mode";
+            document.getElementById('syncStatus').style.background = "#e74e40";
+        });
+
+        window.cloudSaveRecord = async function(record) {
+            try {
+                const cleanRecord = { ...record, photo: null }; 
+                await setDoc(doc(recordsRef, record.id), cleanRecord);
+            } catch (e) {
+                console.log("Offline: Record queued for background upload.");
+            }
+        };
+    </script>
+
+    <script>
+        const ADMIN_PIN = "1234"; // CHANGE THIS PIN to your secret code
+        
+        window.isAdmin = localStorage.getItem('hoque_admin_session') === 'true';
+
+        function checkAuth() {
+            const adminElements = document.querySelectorAll('.admin-only');
+            const adminCols = document.querySelectorAll('.admin-col');
+            
+            if (window.isAdmin) {
+                document.getElementById('loginBtn').style.display = 'none';
+                document.getElementById('logoutBtn').style.display = 'inline-block';
+                adminElements.forEach(el => el.style.display = 'flex');
+                adminCols.forEach(el => el.style.display = 'table-cell');
+            } else {
+                document.getElementById('loginBtn').style.display = 'inline-block';
+                document.getElementById('logoutBtn').style.display = 'none';
+                adminElements.forEach(el => el.style.display = 'none');
+                adminCols.forEach(el => el.style.display = 'none');
+            }
+            renderTable();
+        }
+
+        function openLoginModal() {
+            document.getElementById('adminPassword').value = '';
+            document.getElementById('loginModal').style.display = 'flex';
+        }
+
+        function verifyLogin() {
+            if (document.getElementById('adminPassword').value === ADMIN_PIN) {
+                localStorage.setItem('hoque_admin_session', 'true');
+                window.isAdmin = true;
+                document.getElementById('loginModal').style.display = 'none';
+                checkAuth();
+            } else {
+                alert("Incorrect PIN");
+            }
+        }
+
+        function logout() {
+            localStorage.setItem('hoque_admin_session', 'false');
+            window.isAdmin = false;
+            checkAuth();
+        }
+
+        window.appDB = JSON.parse(localStorage.getItem('hoque_offline_db')) || {
+            currentTab: 'Retail',
+            records: []
+        };
+
+        function saveLocal() {
+            localStorage.setItem('hoque_offline_db', JSON.stringify(window.appDB));
+            renderTable();
+        }
+
+        function switchTab(tabName) {
+            window.appDB.currentTab = tabName;
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.className = btn.innerText === tabName ? 'tab-btn active' : 'tab-btn';
+            });
+            saveLocal();
+        }
+
+        function generateId() { return Date.now().toString(36) + Math.random().toString(36).substring(2); }
+
+        function addRecord() {
+            if (!window.isAdmin) return;
+            const name = document.getElementById('addName').value.trim();
+            if (!name) return alert("Name is required.");
+            
+            const tabRecords = window.appDB.records.filter(r => r.tab === window.appDB.currentTab);
+            const nextSl = tabRecords.length > 0 ? Math.max(...tabRecords.map(r => r.sl)) + 1 : 1;
+
+            const newRecord = {
+                id: generateId(),
+                tab: window.appDB.currentTab,
+                sl: nextSl,
+                name: name,
+                co: document.getElementById('addCO').value.trim(),
+                village: document.getElementById('addVillage').value.trim(),
+                page: document.getElementById('addPage').value.trim(),
+                due: parseFloat(document.getElementById('addDue').value) || 0,
+                paid: 0,
+                photo: null
+            };
+
+            window.appDB.records.push(newRecord);
+            saveLocal();
+            if (window.cloudSaveRecord) window.cloudSaveRecord(newRecord);
+
+            ['addName', 'addCO', 'addVillage', 'addPage', 'addDue'].forEach(id => document.getElementById(id).value = '');
+        }
+
+        function updateField(id, field, value) {
+            if (!window.isAdmin) return;
+            const rec = window.appDB.records.find(r => r.id === id);
+            if (rec) {
+                rec[field] = field === 'due' || field === 'paid' ? (parseFloat(value) || 0) : value.trim();
+                saveLocal();
+                if (window.cloudSaveRecord) window.cloudSaveRecord(rec);
+            }
+        }
+
+        function attachPhoto(event, id) {
+            if (!window.isAdmin) return;
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const rec = window.appDB.records.find(r => r.id === id);
+                rec.photo = e.target.result;
+                saveLocal();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function viewPhoto(imgSrc) {
+            document.getElementById('lightboxImg').src = imgSrc;
+            document.getElementById('lightbox').style.display = 'flex';
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            const term = document.getElementById('searchInput').value.toLowerCase();
+            
+            const viewData = window.appDB.records.filter(r => r.tab === window.appDB.currentTab && 
+                (r.name.toLowerCase().includes(term) || r.co.toLowerCase().includes(term) || r.village.toLowerCase().includes(term) || r.page.toLowerCase().includes(term))
+            ).sort((a, b) => a.sl - b.sl);
+
+            const editableAttr = window.isAdmin ? 'contenteditable="true"' : '';
+
+            viewData.forEach(r => {
+                const remaining = r.due - r.paid;
+                const tr = document.createElement('tr');
+                
+                let adminActionHtml = '';
+                if (window.isAdmin) {
+                    let photoHtml = `<label class="photo-btn"><input type="file" style="display:none;" accept="image/*" onchange="attachPhoto(event, '${r.id}')">📷 Attach</label>`;
+                    if (r.photo) photoHtml = `<img src="${r.photo}" class="img-preview" onclick="viewPhoto('${r.photo}')"><br>` + photoHtml;
+                    adminActionHtml = `<td class="no-print admin-col">${photoHtml}</td>`;
+                }
+
+                tr.innerHTML = `
+                    <td data-col="0">${r.sl}</td>
+                    <td data-col="1" ${editableAttr} onblur="updateField('${r.id}', 'name', this.innerText)">${r.name}</td>
+                    <td data-col="2" ${editableAttr} onblur="updateField('${r.id}', 'co', this.innerText)">${r.co}</td>
+                    <td data-col="3" ${editableAttr} onblur="updateField('${r.id}', 'village', this.innerText)">${r.village}</td>
+                    <td data-col="4" ${editableAttr} onblur="updateField('${r.id}', 'page', this.innerText)">${r.page}</td>
+                    <td data-col="5" ${editableAttr} onblur="updateField('${r.id}', 'due', this.innerText)" style="font-weight:bold;">${r.due}</td>
+                    <td data-col="6" ${editableAttr} onblur="updateField('${r.id}', 'paid', this.innerText)" style="font-weight:bold;">${r.paid}</td>
+                    <td data-col="7" style="font-weight:bold; color:#d35400;">${remaining.toFixed(2)}</td>
+                    ${adminActionHtml}
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openExportModal() { document.getElementById('exportModal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('exportModal').style.display = 'none'; }
+
+        function executePrint() {
+            const checkboxes = document.querySelectorAll('#columnSelectors input');
+            const hiddenCols = Array.from(checkboxes).filter(cb => !cb.checked).map(cb => cb.value);
+            
+            hiddenCols.forEach(colIndex => {
+                document.querySelectorAll(`[data-col="${colIndex}"]`).forEach(el => el.classList.add('hide-col'));
+            });
+
+            window.print();
+
+            setTimeout(() => {
+                document.querySelectorAll('.hide-col').forEach(el => el.classList.remove('hide-col'));
+            }, 500);
+            
+            closeModal();
+        }
+
+        function exportExcel() {
+            const viewData = window.appDB.records.filter(r => r.tab === window.appDB.currentTab).sort((a, b) => a.sl - b.sl);
+            let matrix = [['SL NO', 'NAME', 'C/O', 'VILLAGE', 'PAGE NO', 'DUE AMOUNT', 'PAID AMOUNT', 'REMAINING DUE']];
+            
+            viewData.forEach(r => {
+                matrix.push([r.sl, r.name, r.co, r.village, r.page, r.due, r.paid, (r.due - r.paid)]);
+            });
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matrix), window.appDB.currentTab);
+            XLSX.writeFile(wb, `Hoque_Register_${window.appDB.currentTab}_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        checkAuth();
+    </script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful');
+                }).catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
