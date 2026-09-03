@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hoque Fertilizer - Halkhata</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #2e7d32; 
+            --primary-dark: #1b5e20;
+            --bg: #f4f6f4;
+            --surface: #ffffff;
+            --border: #e0e0e0;
+            --text: #333333;
+            --danger: #d32f2f;
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { margin: 0; background-color: var(--bg); color: var(--text); padding-bottom: 60px; }
+        
+        .header { background-color: var(--primary); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .header h1 { margin: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; }
+        .login-btn { background: transparent; border: 1px solid white; color: white; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+        
+        .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); }
+        .tab { flex: 1; text-align: center; padding: 12px; font-weight: bold; color: gray; cursor: pointer; border-bottom: 3px solid transparent; }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+        
+        .search-container { padding: 10px; background: var(--surface); }
+        .search-container input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 16px; }
+        
+        .admin-panel { display: none; padding: 15px; background: #e8f5e9; border-bottom: 2px solid var(--primary); }
+        .admin-panel.active { display: block; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .form-grid input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; width: 100%; }
+        .form-grid .full-width { grid-column: span 2; }
+        
+        .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn { padding: 10px 15px; border: none; border-radius: 4px; color: white; font-weight: bold; cursor: pointer; flex: 1; min-width: 100px; text-align: center; }
+        .btn-green { background-color: var(--primary); }
+        .btn-red { background-color: var(--danger); }
+        .btn-purple { background-color: #6a1b9a; }
+        .btn-blue { background-color: #1976d2; }
+        .btn-gray { background-color: #616161; }
+        
+        .table-container { overflow-x: auto; background: var(--surface); }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        th, td { padding: 12px 8px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+        th { background-color: var(--primary); color: white; position: sticky; top: 0; cursor: pointer; user-select: none; }
+        th:hover { background-color: var(--primary-dark); }
+        .sort-icon { font-size: 0.8em; margin-left: 4px; }
+        
+        .paid-cell { background-color: #e0f2f1; font-weight: bold; color: #00695c; text-align: center; border-radius: 4px; cursor: pointer; }
+        .due-cell { font-weight: bold; cursor: pointer; }
+        .edit-icon { cursor: pointer; color: #1976d2; font-size: 1.2rem; }
+        .admin-edit-hint { border-bottom: 1px dashed #ccc; padding-bottom: 2px; }
+        
+        .totals-row { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--primary-dark); color: white; display: flex; justify-content: space-around; padding: 12px; font-weight: bold; z-index: 100; font-size: 14px; }
+        
+        /* Loading & Status Toast */
+        #loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 999; justify-content: center; align-items: center; font-weight: bold; color: var(--primary); font-size: 1.2rem; }
+        #syncToast { display: none; position: fixed; bottom: 60px; right: 20px; background: #323232; color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; z-index: 101; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+
+        /* Custom Payment Modal */
+        #paymentModalOverlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .payment-modal { background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .payment-modal h3 { margin-top: 0; color: var(--primary); margin-bottom: 5px; }
+        .payment-modal p { margin: 0 0 15px 0; font-size: 14px; color: #555; }
+        .payment-modal input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 16px; }
+        .payment-modal .modal-btns { display: flex; gap: 10px; margin-top: 10px; }
+
+        /* Print Optimization (Hides everything except essential ledger columns) */
+        @media print {
+            .header, .tabs, .search-container, .admin-panel, .totals-row, .checkbox-col, .edit-col { display: none !important; }
+            body { padding: 0; }
+            table { min-width: 100%; }
+            th, td { font-size: 14pt; padding: 4px; border: 1px solid #000; }
+            th { font-size: 18pt; background-color: #eee !important; color: #000 !important; }
+            /* Hide C/O for cleaner printing */
+            th:nth-child(5), td:nth-child(5) { display: none !important; } 
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader">Downloading Database...</div>
+    <div id="syncToast">Syncing in background...</div>
+
+    <!-- Custom Payment Box -->
+    <div id="paymentModalOverlay">
+        <div class="payment-modal">
+            <h3>Add Payment</h3>
+            <p id="payModalName"></p>
+            <input type="hidden" id="payModalId">
+            <input type="number" id="payModalCash" placeholder="Add Cash (₹) - Leave blank if 0">
+            <input type="number" id="payModalUpi" placeholder="Add UPI (₹) - Leave blank if 0">
+            <div class="modal-btns">
+                <button class="btn btn-green" onclick="savePayment()">Save Updates</button>
+                <button class="btn btn-red" onclick="closePaymentModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <header class="header">
+        <h1>Hoque Fertilizer</h1>
+        <button class="login-btn" onclick="toggleAdmin()">Admin Login</button>
+    </header>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('Retail')">Retail</div>
+        <div class="tab" onclick="switchTab('Wholesale')">Wholesale</div>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Search by Name, Village, or Page No..." onkeyup="renderTable()">
+    </div>
+
+    <div class="admin-panel" id="adminPanel">
+        <input type="hidden" id="recordId">
+        <div class="form-grid">
+            <input type="text" id="slNo" placeholder="SL NO (Auto-fills if empty)">
+            <input type="text" id="pageNo" placeholder="PAGE NO">
+            <input type="text" id="name" placeholder="NAME" class="full-width">
+            <input type="text" id="co" placeholder="C/O">
+            <input type="text" id="village" placeholder="VILLAGE">
+            <input type="number" id="dueAmount" placeholder="DUE AMOUNT (₹)">
+            <input type="number" id="cashPaid" placeholder="CASH PAID (₹)">
+            <input type="number" id="upiPaid" placeholder="UPI PAID (₹)">
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-green" id="saveBtn" onclick="saveRecord()">Add Record</button>
+            <button class="btn btn-red" onclick="deleteSelected()">Delete</button>
+            <button class="btn btn-purple" onclick="document.getElementById('importFile').click()">Import</button>
+            <button class="btn btn-blue" onclick="exportExcel()">Export</button>
+            <button class="btn btn-gray" onclick="window.print()">Print</button>
+            <input type="file" id="importFile" accept=".xlsx, .xls" style="display: none;" onchange="importExcel(event)">
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th class="checkbox-col" style="display:none;">✓</th>
+                    <th class="edit-col" style="display:none;">Edit</th>
+                    <th>SL NO</th>
+                    <th onclick="sortTable('NAME')">NAME <span class="sort-icon" id="sort-NAME"></span></th>
+                    <th>C/O</th>
+                    <th>VILLAGE</th>
+                    <th onclick="sortTable('PAGE_NO')">PAGE NO <span class="sort-icon" id="sort-PAGE_NO"></span></th>
+                    <th onclick="sortTable('DUE_AMOUNT')">TOTAL DUE <span class="sort-icon" id="sort-DUE_AMOUNT"></span></th>
+                    <th>PAID AMOUNT</th>
+                    <th>REMAINING DUE</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+
+    <div class="totals-row">
+        <span>Due: ₹<span id="sumDue">0</span></span>
+        <span>Paid: ₹<span id="sumPaid">0</span></span>
+        <span>Remain: ₹<span id="sumRemain">0</span></span>
+    </div>
+
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbykCOwEpkd-ejONhTw0JuyfUSMlYx8x17Uq7tyF6a0PdOjjkxfOkbJeLZo45wJU5_oD/exec";
+    const ADMIN_PIN = "1234";
+
+    let appData = { Retail: [], Wholesale: [] };
+    let currentTab = "Retail";
+    let isAdmin = false;
+    let currentSort = { column: null, ascending: true };
+
+    window.onload = () => { fetchData(); };
+
+    // Initial Load ONLY shows full screen block
+    async function fetchData() {
+        document.getElementById('loader').style.display = 'flex';
+        try {
+            const response = await fetch(SCRIPT_URL);
+            const result = await response.json();
+            if (result.status === "success") {
+                appData.Retail = result.retail || [];
+                appData.Wholesale = result.wholesale || [];
+                renderTable();
+            }
+        } catch (error) { alert("Error connecting to database. Running in offline view."); }
+        document.getElementById('loader').style.display = 'none';
+    }
+
+    function switchTab(tabName) {
+        currentTab = tabName;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        clearForm(); renderTable();
+    }
+
+    function toggleAdmin() {
+        if (!isAdmin) {
+            if (prompt("Enter Admin PIN:") === ADMIN_PIN) {
+                isAdmin = true;
+                document.querySelector('.login-btn').innerText = "Lock Admin";
+                document.getElementById('adminPanel').classList.add('active');
+            } else { alert("Incorrect PIN"); }
+        } else {
+            isAdmin = false;
+            document.querySelector('.login-btn').innerText = "Admin Login";
+            document.getElementById('adminPanel').classList.remove('active');
+        }
+        renderTable();
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = "";
+        
+        let data = [...appData[currentTab]];
+        const query = document.getElementById('searchInput').value.toLowerCase();
+
+        if (query) {
+            data = data.filter(r => 
+                (r.NAME && r.NAME.toLowerCase().includes(query)) ||
+                (r.VILLAGE && r.VILLAGE.toLowerCase().includes(query)) ||
+                (r.CO && r.CO.toLowerCase().includes(query)) ||
+                (r.PAGE_NO && r.PAGE_NO.toString().includes(query))
+            );
+        }
+
+        if (currentSort.column) {
+            data.sort((a, b) => {
+                let valA = a[currentSort.column];
+                let valB = b[currentSort.column];
+                
+                if (['DUE_AMOUNT', 'PAGE_NO', 'SL_NO'].includes(currentSort.column)) {
+                    valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0;
+                    return currentSort.ascending ? valA - valB : valB - valA;
+                } else {
+                    valA = valA ? valA.toString().toLowerCase() : ""; valB = valB ? valB.toString().toLowerCase() : "";
+                    return currentSort.ascending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                }
+            });
+        }
+
+        let sumDue = 0, sumPaid = 0, sumRemain = 0;
+        document.querySelectorAll('.checkbox-col, .edit-col').forEach(el => el.style.display = isAdmin ? 'table-cell' : 'none');
+
+        data.forEach(row => {
+            const due = parseFloat(row.DUE_AMOUNT) || 0;
+            const cash = parseFloat(row.CASH_PAID) || 0;
+            const upi = parseFloat(row.UPI_PAID) || 0;
+            const totalPaid = cash + upi;
+            const remaining = due - totalPaid;
+
+            sumDue += due; sumPaid += totalPaid; sumRemain += remaining;
+
+            const dueClass = isAdmin ? "due-cell admin-edit-hint" : "due-cell";
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="checkbox-col" style="display:${isAdmin ? 'table-cell' : 'none'};"><input type="checkbox" class="row-checkbox" value="${row.ID}"></td>
+                <td class="edit-col" style="display:${isAdmin ? 'table-cell' : 'none'};"><span class="edit-icon" onclick="loadEditForm('${row.ID}')">✏️</span></td>
+                <td>${row.SL_NO || ''}</td>
+                <td><strong>${row.NAME || ''}</strong></td>
+                <td>${row.CO || ''}</td>
+                <td>${row.VILLAGE || ''}</td>
+                <td>${row.PAGE_NO || ''}</td>
+                <td class="${dueClass}" onclick="quickEditDue('${row.ID}')">₹${due}</td>
+                <td class="paid-cell" onclick="openPaymentModal('${row.ID}')">₹${totalPaid}</td>
+                <td style="color:${remaining > 0 ? 'var(--danger)' : 'var(--primary)'}; font-weight:bold;">₹${remaining}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('sumDue').innerText = sumDue;
+        document.getElementById('sumPaid').innerText = sumPaid;
+        document.getElementById('sumRemain').innerText = sumRemain;
+    }
+
+    function sortTable(column) {
+        if (currentSort.column === column) { currentSort.ascending = !currentSort.ascending; } 
+        else { currentSort.column = column; currentSort.ascending = true; }
+        
+        document.querySelectorAll('.sort-icon').forEach(icon => icon.innerText = "");
+        document.getElementById(`sort-${column}`).innerText = currentSort.ascending ? " ▲" : " ▼";
+        renderTable();
+    }
+
+    // --- BACKGROUND SYNC LOGIC (SILENT UI) ---
+    async function silentDBAction(action, recordData) {
+        const toast = document.getElementById('syncToast');
+        toast.innerText = "Syncing in background...";
+        toast.style.display = "block";
+        
+        try {
+            await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: action, tab: currentTab, record: recordData }) });
+            toast.innerText = "Saved to Cloud ✓";
+            setTimeout(() => { toast.style.display = "none"; }, 2000);
+        } catch (error) { 
+            toast.innerText = "⚠️ Offline: Sync Failed"; 
+            toast.style.backgroundColor = "var(--danger)";
+            setTimeout(() => { toast.style.display = "none"; toast.style.backgroundColor = "#323232"; }, 3000);
+        }
+    }
+
+    // --- ADD / UPDATE RECORD ---
+    function saveRecord() {
+        const isUpdate = document.getElementById('recordId').value !== "";
+        const id = document.getElementById('recordId').value || Date.now().toString();
+        
+        let manualSl = document.getElementById('slNo').value;
+        if (!manualSl && !isUpdate) { manualSl = appData[currentTab].length + 1; }
+        
+        const record = {
+            ID: id, SL_NO: manualSl, PAGE_NO: document.getElementById('pageNo').value,
+            NAME: document.getElementById('name').value, CO: document.getElementById('co').value,
+            VILLAGE: document.getElementById('village').value, DUE_AMOUNT: document.getElementById('dueAmount').value,
+            CASH_PAID: document.getElementById('cashPaid').value, UPI_PAID: document.getElementById('upiPaid').value
+        };
+
+        if(!record.NAME) { alert("Name is required!"); return; }
+
+        // Optimistic UI Update: Instantly change local array and refresh screen
+        if (isUpdate) {
+            const index = appData[currentTab].findIndex(r => r.ID == record.ID);
+            appData[currentTab][index] = record;
+        } else {
+            appData[currentTab].push(record);
+        }
+        
+        renderTable();
+        clearForm();
+        silentDBAction(isUpdate ? "UPDATE" : "ADD", record);
+    }
+
+    // --- QUICK EDITS (NEW MODALS & FAST LOGIC) ---
+    function quickEditDue(id) {
+        if (!isAdmin) return;
+        const record = appData[currentTab].find(r => r.ID == id);
+        const newDue = prompt(`Update Total Due Amount for ${record.NAME}:`, record.DUE_AMOUNT);
+        
+        if (newDue !== null && newDue.trim() !== "") {
+            record.DUE_AMOUNT = parseFloat(newDue);
+            renderTable(); // Instant UI
+            silentDBAction("UPDATE", record); // Silent Background sync
+        }
+    }
+
+    function openPaymentModal(id) {
+        const record = appData[currentTab].find(r => r.ID == id);
+        if (!isAdmin) {
+            alert(`Payment Details for ${record.NAME}:\nCash: ₹${record.CASH_PAID || 0}\nUPI: ₹${record.UPI_PAID || 0}`);
+            return;
+        }
+        
+        document.getElementById('payModalId').value = id;
+        document.getElementById('payModalName').innerText = `${record.NAME} (Current Paid: ₹${(parseFloat(record.CASH_PAID) || 0) + (parseFloat(record.UPI_PAID) || 0)})`;
+        document.getElementById('payModalCash').value = '';
+        document.getElementById('payModalUpi').value = '';
+        document.getElementById('paymentModalOverlay').style.display = 'flex';
+    }
+
+    function closePaymentModal() {
+        document.getElementById('paymentModalOverlay').style.display = 'none';
+    }
+
+    function savePayment() {
+        const id = document.getElementById('payModalId').value;
+        const cashAdd = parseFloat(document.getElementById('payModalCash').value) || 0;
+        const upiAdd = parseFloat(document.getElementById('payModalUpi').value) || 0;
+
+        if (cashAdd === 0 && upiAdd === 0) { closePaymentModal(); return; }
+
+        const record = appData[currentTab].find(r => r.ID == id);
+        record.CASH_PAID = (parseFloat(record.CASH_PAID) || 0) + cashAdd;
+        record.UPI_PAID = (parseFloat(record.UPI_PAID) || 0) + upiAdd;
+
+        closePaymentModal();
+        renderTable(); // Instant UI
+        silentDBAction("UPDATE", record); // Silent Background sync
+    }
+
+    // --- OTHER ADMIN FUNCTIONS ---
+    function loadEditForm(id) {
+        const record = appData[currentTab].find(r => r.ID == id);
+        if (!record) return;
+
+        document.getElementById('recordId').value = record.ID;
+        document.getElementById('slNo').value = record.SL_NO || '';
+        document.getElementById('pageNo').value = record.PAGE_NO || '';
+        document.getElementById('name').value = record.NAME || '';
+        document.getElementById('co').value = record.CO || '';
+        document.getElementById('village').value = record.VILLAGE || '';
+        document.getElementById('dueAmount').value = record.DUE_AMOUNT || '';
+        document.getElementById('cashPaid').value = record.CASH_PAID || '';
+        document.getElementById('upiPaid').value = record.UPI_PAID || '';
+
+        document.getElementById('saveBtn').innerText = "Update Record";
+        document.getElementById('saveBtn').classList.replace('btn-green', 'btn-blue');
+        window.scrollTo(0, 0);
+    }
+
+    function clearForm() {
+        document.querySelectorAll('.form-grid input').forEach(input => input.value = '');
+        document.getElementById('recordId').value = "";
+        document.getElementById('saveBtn').innerText = "Add Record";
+        document.getElementById('saveBtn').classList.replace('btn-blue', 'btn-green');
+    }
+
+    async function deleteSelected() {
+        const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+        if (checkboxes.length === 0 || !confirm(`Delete ${checkboxes.length} record(s)?`)) return;
+
+        // Instant UI Removal
+        const idsToDelete = Array.from(checkboxes).map(box => box.value);
+        appData[currentTab] = appData[currentTab].filter(r => !idsToDelete.includes(r.ID));
+        renderTable();
+
+        // Silent Background Sync
+        document.getElementById('syncToast').style.display = "block";
+        document.getElementById('syncToast').innerText = `Deleting ${idsToDelete.length} rows...`;
+        for (let id of idsToDelete) {
+            await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: "DELETE", tab: currentTab, record: { ID: id } }) });
+        }
+        document.getElementById('syncToast').innerText = "Deletion Complete ✓";
+        setTimeout(() => { document.getElementById('syncToast').style.display = "none"; }, 2000);
+    }
+
+    // --- SELECTIVE EXCEL EXPORT ---
+    function exportExcel() {
+        // Only exports essential ledger columns, strips out background IDs
+        const cleanData = appData[currentTab].map(row => ({
+            "SL NO": row.SL_NO || "",
+            "NAME": row.NAME || "",
+            "VILLAGE": row.VILLAGE || "",
+            "PAGE NO": row.PAGE_NO || "",
+            "TOTAL DUE": parseFloat(row.DUE_AMOUNT) || 0,
+            "CASH PAID": parseFloat(row.CASH_PAID) || 0,
+            "UPI PAID": parseFloat(row.UPI_PAID) || 0,
+            "REMAINING": (parseFloat(row.DUE_AMOUNT) || 0) - ((parseFloat(row.CASH_PAID) || 0) + (parseFloat(row.UPI_PAID) || 0))
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(cleanData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, currentTab);
+        XLSX.writeFile(wb, `Hoque_Ledger_${currentTab}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+</script>
+</body>
+</html>
